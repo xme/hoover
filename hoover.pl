@@ -65,7 +65,7 @@ my $options = GetOptions(
 	"interface=s"		=> \$interface,
 	"ifconfig-path=s"	=> \$ifconfigPath,
 	"iwconfig-path=s"	=> \$iwconfigPath,
-	"tsharkPath=s"		=> \$tsharkPath,
+	"tshark-path=s"		=> \$tsharkPath,
 	"dumpfile=s"		=> \$dumpFile,
 );
 
