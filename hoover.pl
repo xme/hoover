@@ -56,8 +56,10 @@ my $help;
 my $verbose;
 my $interface;
 my $dumpFile;
+my $osname = $^O;
 my $ifconfigPath = "/sbin/ifconfig";
 my $iwconfigPath = "/sbin/iwconfig";
+my $airportPath  = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport";
 my $tsharkPath   = "/usr/local/bin/tshark";
 my $options = GetOptions(
 	"verbose"		=> \$verbose,
@@ -71,7 +73,7 @@ my $options = GetOptions(
 
 if ($help) {
 	print <<_HELP_;
-Usage: $0 --interface=wlan0 [--help] [--verbose] [--iwconfig-path=/sbin/iwconfig] [--ipconfig-path=/sbin/ifconfig]
+Usage: $0 --interface=en1_or_wlan0 [--help] [--verbose] [--iwconfig-path=/sbin/iwconfig] [--ipconfig-path=/sbin/ifconfig]
 		[--dumpfile=result.txt]
 Where:
 --interface		: Specify the wireless interface to use
@@ -86,7 +88,7 @@ _HELP_
 }
 
 # We must be run by root
-(getlogin() ne "root") && die "$0 must be run by root!\n";
+($< != 0) && die "$0 must be run by root!\n";
 
 # We must have an interface to listen to
 (!$interface) && die "No wireless interface speficied!\n";
@@ -95,7 +97,7 @@ _HELP_
 ( ! -x $ifconfigPath) && die "ifconfig tool not found!\n";
 
 # Check iwconfig availability
-( ! -x $iwconfigPath) && die "iwconfig tool not found!\n";
+($osname ne 'darwin') && ( ! -x $iwconfigPath) && die "iwconfig tool not found!\n";
 
 # Check tshark availability
 ( ! -x $tsharkPath) && die "tshark tool not available!\n";
@@ -104,7 +106,8 @@ _HELP_
 (system("$ifconfigPath $interface up")) && "Cannot initialize interface $interface!\n";
 
 # Set interface in monitor mode
-(system("$iwconfigPath $interface mode monitor")) && die "Cannot set interface $interface in monitoring mode!\n";
+($osname ne 'darwin') && (system("$iwconfigPath $interface mode monitor")) && die "Cannot set interface $interface in monitoring mode!\n";
+($osname eq 'darwin') && (system("$airportPath $interface -z")) && die "Cannot disassociate interface $interface!\n";
 
 # Create the child process to change wireless channels
 (!defined($pid = fork)) && die "Cannot fork child process!\n";
@@ -114,7 +117,7 @@ if ($pid) {
 	# Parent process: run the main loop
 	# ---------------------------------
 	($verbose) && print "!! Running with PID: $$ (child: $pid)\n";
-	open(TSHARK, "$tsharkPath -i $interface -n -l subtype probereq |") || die "Cannot spawn tshark process!\n";
+	open(TSHARK, $osname ne 'darwin' ? "$tsharkPath -i $interface -n -l subtype probereq |" : "$tsharkPath -i $interface -n -l -y PPI -R \"wlan.fc.type_subtype==4\"  |") || die "Cannot spawn tshark process!\n";
 	while (<TSHARK>) {
 		chomp;
 		my $line = $_;
@@ -154,14 +157,22 @@ else {
 	# Child process: Switch channels at regular interval
 	# --------------------------------------------------
 	($verbose) && print STDOUT "!! Switching wireless channel every 5\".\n";
+	if ($osname ne 'darwin') {
 	while (1) {
 		for (my $channel = 1; $channel <= 12; $channel++) {
 			(system("$iwconfigPath $interface channel $channel")) &&
 				die "Cannot set interface channel.\n";
 			sleep(5);
 		}
-	}
-	
+	} }
+	else {
+	while (1) {
+		for (my $channel = 1; $channel <= 14; $channel++) {
+			(system("$airportPath $interface -c$channel")) &&
+				die "Cannot set interface channel.\n";
+			sleep(5);
+		}
+	} }
 }
 
 sub dumpNetworks {
