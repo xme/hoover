@@ -35,10 +35,9 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ## History
 
-2012/01/11 Created
-2014/03/10 Merged OSX fork and made minor fixes (timestamp)
-
-* Original source from https://github.com/xme/hoover
-* OSX support from https://github.com/hermanbanken/hoover
+* 2012/01/11 Created
+* 2014/03/10 Merged OSX fork and made minor fixes (timestamp)
+  * Original source from https://github.com/xme/hoover
+  * OSX support from https://github.com/hermanbanken/hoover
 
 
