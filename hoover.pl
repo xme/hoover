@@ -123,7 +123,7 @@ if ($pid) {
 	my $fieldParams = "-T fields -e wlan.sa -e wlan_mgt.ssid -Eseparator=,";
 	my $tsharkCommandLine = "$tsharkPath -i $interface -n -l $fieldParams";
 	if ($osname ne 'darwin') {
-		$tsharkCommandLine .= " subtype probereq $fieldParams -2 -R \"$displayFilter\" |";
+		$tsharkCommandLine .= " subtype probereq -2 -R \"$displayFilter\" |";
 	} else {
 		$tsharkCommandLine .= " -y PPI -2 -R \"wlan.fc.type_subtype==4 and $displayFilter\" |"
 	}
@@ -154,7 +154,7 @@ if ($pid) {
 			$detectedSSID{$hashKey}[1]++;			# Increase packets counter
 			$detectedSSID{$hashKey}[2] = $macAddress;	# MAC Address
 			$detectedSSID{$hashKey}[3] = time();		# Now
-			($verbose) && print "-- Probe seen before: $ssid [$uniqueSSID]\n";
+			($verbose) && print "-- Probe seen before: $hashKey [$uniqueSSID]\n";
 		}
 	}
 }
@@ -166,6 +166,7 @@ else {
 	if ($osname ne 'darwin') {
 	while (1) {
 		for (my $channel = 1; $channel <= 12; $channel++) {
+			($verbose) && print STDOUT "!! Switching to channel $channel\n";
 			(system("$iwconfigPath $interface channel $channel")) &&
 				die "Cannot set interface channel.\n";
 			sleep(5);
@@ -174,6 +175,7 @@ else {
 	else {
 	while (1) {
 		for (my $channel = 1; $channel <= 14; $channel++) {
+			($verbose) && print STDOUT "!! Switching to channel $channel\n";
 			(system("$airportPath $interface -c$channel")) &&
 				die "Cannot set interface channel.\n";
 			sleep(5);
