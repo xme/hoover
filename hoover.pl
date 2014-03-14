@@ -50,7 +50,7 @@ $SIG{TERM}	= \&cleanKill;
 
 my $uniqueSSID = 0;		#uniq ssid counter
 my %detectedSSID;	# Detected network will be stored in a hash table
-			# SSID, Seen packets, Last timestamp
+			# SSID, Seen packets, MAC, Last timestamp
 my $pid;
 my $help;
 my $verbose;
@@ -117,46 +117,52 @@ if ($pid) {
 	# Parent process: run the main loop
 	# ---------------------------------
 	($verbose) && print "!! Running with PID: $$ (child: $pid)\n";
-	open(TSHARK, $osname ne 'darwin' ? "$tsharkPath -i $interface -n -l subtype probereq |" : "$tsharkPath -i $interface -n -l -y PPI -R \"wlan.fc.type_subtype==4\"  |") || die "Cannot spawn tshark process!\n";
+
+	# only valid packets and non-empty SSIDs:
+	my $displayFilter = "wlan.fcs_good==1 and not wlan_mgt.ssid==\\\"\\\"";
+	my $fieldParams = "-T fields -e wlan.sa -e wlan_mgt.ssid -Eseparator=,";
+	my $tsharkCommandLine = "$tsharkPath -i $interface -n -l $fieldParams";
+	if ($osname ne 'darwin') {
+		$tsharkCommandLine .= " subtype probereq $fieldParams -2 -R \"$displayFilter\" |";
+	} else {
+		$tsharkCommandLine .= " -y PPI -2 -R \"wlan.fc.type_subtype==4 and $displayFilter\" |"
+	}
+	($verbose) && print "!! command: $tsharkCommandLine\n";
+
+	open(TSHARK, $tsharkCommandLine) || die "Cannot spawn tshark process!\n";
 	while (<TSHARK>) {
 		chomp;
 		my $line = $_;
 		chomp($line = $_); 
-		# Everything exept backslash (some probes contains the ssid in ascii, not usable)
-		#if($line = m/\d+\.\d+ ([a-zA-Z0-9:]+).+SSID=([a-zA-ZÀ-ÿ0-9"\s\!\@\$\%\^\&\*\(\)\_\-\+\=\[\]\{\}\,\.\?\>\<]+)/) { 
-		if($line = m/\d+\.\d+ ([a-zA-Z0-9:_]+).+SSID=([a-zA-ZÀ-ÿ0-9"\s\!\@\$\%\^\&\*\(\)\_\-\+\=\[\]\{\}\,\.\?\>\<]+)/) { 
-			if($2 ne "Broadcast") {	# Ignore broadcasts
-				my $macAddress = $1;
-				my $newKey = $2;
-				print DEBUG "$macAddress : $newKey\n";
-				if (! $detectedSSID{$newKey})
-				{
-					# New network found!
-					my @newSSID = ( $newKey,		# SSID
-							1,			# First packet
-							$macAddress,		# MAC Address
-							time());		# Seen now
-					$detectedSSID{$newKey} = [ @newSSID ];
-					$uniqueSSID++;
-					print "++ New probe request from $macAddress with SSID: $newKey [$uniqueSSID]\n";
-				}
-				else
-				{
-					# Existing SSID found!
-					$detectedSSID{$newKey}[1]++;			# Increase packets counter
-					$detectedSSID{$newKey}[2] = $macAddress;	# MAC Address
-					$detectedSSID{$newKey}[3] = time();		# Now
-					($verbose) && print "-- Probe seen before: $newKey [$uniqueSSID]\n";
-				}
-			}
-		}	
+		my ($macAddress, $ssid) = split(/,/, $line);
+		($verbose) && print "!! found packet: mac=$macAddress, ssid=$ssid\n";
+		my $hashKey = "$macAddress-$ssid";
+		if (! $detectedSSID{$hashKey})
+		{
+			# New network found!
+			my @newSSID = ( $ssid,		# SSID
+					1,			# First packet
+					$macAddress,		# MAC Address
+					time());		# Seen now
+			$detectedSSID{$hashKey} = [ @newSSID ];
+			$uniqueSSID++;
+			print "++ New probe request from $macAddress with SSID: $ssid [$uniqueSSID]\n";
+		}
+		else
+		{
+			# Existing SSID found!
+			$detectedSSID{$hashKey}[1]++;			# Increase packets counter
+			$detectedSSID{$hashKey}[2] = $macAddress;	# MAC Address
+			$detectedSSID{$hashKey}[3] = time();		# Now
+			($verbose) && print "-- Probe seen before: $ssid [$uniqueSSID]\n";
+		}
 	}
 }
 else {
 	# --------------------------------------------------
 	# Child process: Switch channels at regular interval
 	# --------------------------------------------------
-	($verbose) && print STDOUT "!! Switching wireless channel every 5\".\n";
+	($verbose) && print STDOUT "!! Switching wireless channel every 5 seconds.\n";
 	if ($osname ne 'darwin') {
 	while (1) {
 		for (my $channel = 1; $channel <= 12; $channel++) {
