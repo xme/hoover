@@ -164,23 +164,25 @@ else {
 	# --------------------------------------------------
 	($verbose) && print STDOUT "!! Switching wireless channel every 5 seconds.\n";
 	if ($osname ne 'darwin') {
-	while (1) {
-		for (my $channel = 1; $channel <= 12; $channel++) {
-			($verbose) && print STDOUT "!! Switching to channel $channel\n";
-			(system("$iwconfigPath $interface channel $channel")) &&
-				die "Cannot set interface channel.\n";
-			sleep(5);
-		}
-	} }
+	  while (1) {
+		  for (my $channel = 1; $channel <= 12; $channel++) {
+			  ($verbose) && print STDOUT "!! Switching to channel $channel\n";
+			  (system("$iwconfigPath $interface channel $channel")) &&
+				  die "Cannot set interface channel.\n";
+			  sleep(5);
+  		}
+	  } 
+  }
 	else {
-	while (1) {
-		for (my $channel = 1; $channel <= 14; $channel++) {
-			($verbose) && print STDOUT "!! Switching to channel $channel\n";
-			(system("$airportPath $interface -c$channel")) &&
-				die "Cannot set interface channel.\n";
-			sleep(5);
-		}
-	} }
+  	while (1) {
+	  	for (my $channel = 1; $channel <= 14; $channel++) {
+		  	($verbose) && print STDOUT "!! Switching to channel $channel\n";
+			  (system("$airportPath $interface -c$channel")) &&
+				  die "Cannot set interface channel.\n";
+		  	sleep(5);
+		  }
+	  } 
+  }
 }
 
 sub dumpNetworks {
