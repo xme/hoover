@@ -6,6 +6,8 @@ import sys
 import time
 import subprocess
 import os
+import argparse
+
 
 def signal_handler(signal, frame):
     print 'You pressend CTRL+C, data is flushed into database/file...'
@@ -31,32 +33,51 @@ class switchChannelThread (threading.Thread):
                 time.sleep(self.delayInSeconds)
                 if not self.running:
                     return        
-                 
-        
+
+
+# command line parsing:
+parser = argparse.ArgumentParser(description='Show and collect wlan request probes')
+parser.add_argument('--interface', default='en1', 
+    help='the interface used for monitoring')
+parser.add_argument('--tsharkPath', default='/usr/local/bin/tshark', 
+    help='path to tshark binary')
+parser.add_argument('--verbose', action='store_true', help='verbose information')
+args = parser.parse_args()
+
+tsharkPath = args.tsharkPath
+interface = args.interface
+verbose = args.verbose
+
 # create switch thread
 #switchThread = switchChannelThread(1, 'SwitchChannel', 'airbase', 14, 5)
 #switchThread.start()
 
 osname = os.uname()[0]
 
-tsharkPath = '/usr/local/bin/tshark'
-
 displayFilter = "wlan.fcs_good==1 and not wlan_mgt.ssid==\\\"\\\"";
 fieldParams = "-T fields -e wlan.sa -e wlan_mgt.ssid -Eseparator=,";
-tsharkCommandLine = "{0} -i en1 -n -l {1}"
+tsharkCommandLine = "{0} -i {1} -n -l {2}"
 
-if (osname == 'Darwin'):
-    tsharkCommandLine += " subtype probereq -2 -R \"{2}\""
+if (osname != 'Darwin'):
+    tsharkCommandLine += " subtype probereq -2 -R \"{3}\""
 else:
-	tsharkCommandLine += " -y PPI -2 -R \"wlan.fc.type_subtype==4 and {2}\""
+	tsharkCommandLine += " -y PPI -2 -R \"wlan.fc.type_subtype==4 and {3}\""
 
-tsharkCommandLine = tsharkCommandLine.format(tsharkPath, fieldParams, displayFilter)
+tsharkCommandLine = tsharkCommandLine.format(tsharkPath, interface, fieldParams, displayFilter)
 
-print 'tshark command: %s' % tsharkCommandLine, 
+if verbose: 
+    print 'tshark command: %s\n' % tsharkCommandLine, 
 
-popen = subprocess.Popen(tsharkCommandLine, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-for line in iter(popen.stdout.readline, ''): 
-    print 'line: %s' % (line,)
+DEVNULL = open(os.devnull, 'w')
+popen = subprocess.Popen(tsharkCommandLine, shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
+
+for line in iter(popen.stdout.readline, ''):
+    line = line.rstrip()
+    if verbose: 
+        print 'line: "%s"' % (line,)
+    if line.find(',') > 0:
+        mac, ssid = line.split(',', 1)
+        print "mac: '{0}', ssid: '{1}'".format(mac,ssid)
     
 signal.signal(signal.SIGINT, signal_handler)
 print 'press CTRL+C'
