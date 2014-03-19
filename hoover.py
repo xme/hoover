@@ -10,10 +10,15 @@ import os.path
 import argparse
 
 
+
 def signal_handler(signal, frame):
     print 'You pressend CTRL+C, data is flushed into database/file...'
     switchThread.running = False
     switchThread.join()
+    formatString = "{0: <18} {1: <20} {2: <18}"
+    print formatString.format("mac", "ssid", "last seen")
+    for key, value in entries.iteritems():
+        print formatString.format(value.mac, value.ssid, time.strftime("%Y%m%d-%H:%M:%S", value.timeLastSeen))
     sys.exit(0)
 
 
@@ -46,6 +51,13 @@ class switchChannelThread (threading.Thread):
                 time.sleep(self.delayInSeconds)
                 if not self.running:
                     return        
+
+class Entry (object):
+    def __init__(self, mac, ssid, time):
+        self.mac = mac
+        self.ssid = ssid
+        self.timeLastSeen = time
+
 
 osname = os.uname()[0]
 if osname != "Darwin":
@@ -106,7 +118,6 @@ if retVal != 0:
 # start thread that switches channels
 switchThread = switchChannelThread(1, 'SwitchChannel', 5)
 switchThread.start()
-
 signal.signal(signal.SIGINT, signal_handler)
 print 'press CTRL+C to exit'
 # signal.pause()
@@ -129,11 +140,20 @@ if verbose:
 DEVNULL = open(os.devnull, 'w')
 popen = subprocess.Popen(tsharkCommandLine, shell=True, stdout=subprocess.PIPE, stderr=DEVNULL)
 
+# collect all Entry objects in entries
+entries = {}
+
 for line in iter(popen.stdout.readline, ''):
     line = line.rstrip()
 #    if verbose: 
 #        print 'line: "%s"' % (line,)
     if line.find(',') > 0:
         mac, ssid = line.split(',', 1)
-        print "mac: '{0}', ssid: '{1}'".format(mac,ssid)
-    
+        if line in entries:
+            if verbose:
+                print "entry found (seen before): mac: '{0}', ssid: '{1}'".format(mac,ssid)
+            entry = entries[line]
+            entry.timeLastSeen = time.localtime()
+        else:
+            print "new entry found: mac: '{0}', ssid: '{1}'".format(mac,ssid)
+            entries[line] = Entry(mac, ssid, time.localtime())
