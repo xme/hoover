@@ -39,5 +39,5 @@ POSSIBILITY OF SUCH DAMAGE.
 * 2014/03/10 Merged OSX fork and made minor fixes (timestamp)
   * Original source from https://github.com/xme/hoover
   * OSX support from https://github.com/hermanbanken/hoover
-
+* 2014/03/18 finished python version (same functionality as perl version)
 
