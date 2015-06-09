@@ -38,6 +38,7 @@
 # History
 # -------
 # 2012/01/11	Created
+# 2015/06/09	Fix: root detection 
 #
 
 use strict;
@@ -86,7 +87,7 @@ _HELP_
 }
 
 # We must be run by root
-(getlogin() ne "root") && die "$0 must be run by root!\n";
+($> ne 0) && die "$0 must be run by root!\n";
 
 # We must have an interface to listen to
 (!$interface) && die "No wireless interface speficied!\n";
