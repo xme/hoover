@@ -40,7 +40,7 @@ class switchChannelThread (threading.Thread):
                 if verbose: 
                     print 'Switching to channel %d' % (channel)
                 if osname != "Darwin":
-                    if subprocess.call([iwconfigPath, interface, "channel", channel]) != 0:
+                    if subprocess.call([iwconfigPath, interface, "channel", str(channel)]) != 0:
                         self.running = False
                         sys.exit(4)
                 else:
