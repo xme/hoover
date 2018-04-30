@@ -178,7 +178,7 @@ sub dumpNetworks {
 	}
 	for $key ( keys %detectedSSID)
 	{
-		my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($detectedSSID{$key}[2]);
+		my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($detectedSSID{$key}[3]);
 		my $lastSeen = sprintf("%04d/%02d/%02d %02d:%02d:%02d", $year+1900, $mon+1, $mday, $hour, $min, $sec);
 		print STDOUT sprintf("!! %-20s %-30s %10s %-20s\n", $detectedSSID{$key}[2],
 		 				 $detectedSSID{$key}[0], $detectedSSID{$key}[1], $lastSeen);
