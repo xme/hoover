@@ -39,6 +39,7 @@
 # -------
 # 2012/01/11	Created
 # 2015/06/09	Fix: root detection 
+# 2022/08/31    Added support for Wifi coconut
 #
 
 use strict;
@@ -56,16 +57,22 @@ my $pid;
 my $help;
 my $verbose;
 my $interface;
+my $coconut;
 my $dumpFile;
+my $runCommand;
 my $ifconfigPath = "/sbin/ifconfig";
 my $iwconfigPath = "/sbin/iwconfig";
-my $tsharkPath   = "/usr/local/bin/tshark";
+my $tsharkPath   = "/usr/bin/tshark";
+my $coconutPath  = "/usr/local/bin/wifi_coconut";
+
 my $options = GetOptions(
 	"verbose"		=> \$verbose,
 	"help"			=> \$help,
 	"interface=s"		=> \$interface,
+	"coconut"		=> \$coconut,
 	"ifconfig-path=s"	=> \$ifconfigPath,
 	"iwconfig-path=s"	=> \$iwconfigPath,
+	"wificoconut-path=s" => \$coconutPath,
 	"tshark-path=s"		=> \$tsharkPath,
 	"dumpfile=s"		=> \$dumpFile,
 );
@@ -75,12 +82,15 @@ if ($help) {
 Usage: $0 --interface=wlan0 [--help] [--verbose] [--iwconfig-path=/sbin/iwconfig] [--ipconfig-path=/sbin/ifconfig]
 		[--dumpfile=result.txt]
 Where:
---interface		: Specify the wireless interface to use
---help			: This help
---verbose		: Verbose output to STDOUT
+--interface		    : Specify the wireless interface to use
+--coconut		    : Use wifi coconut
+--help			    : This help
+--verbose		    : Verbose output to STDOUT
 --ifconfig-path		: Path to your ifconfig binary
 --iwconfig-path		: Path to your iwconfig binary
 --tshark-path		: Path to your tshark binary
+--wificoconut-path	: Path to your wifi_coconut binary
+
 --dumpfile		: Save found SSID's/MAC addresses in a flat file (SIGUSR1)
 _HELP_
 	exit 0;
@@ -90,7 +100,7 @@ _HELP_
 ($> ne 0) && die "$0 must be run by root!\n";
 
 # We must have an interface to listen to
-(!$interface) && die "No wireless interface speficied!\n";
+(!$interface and !$coconut) && die "No wireless interface speficied!\n";
 
 # Check ifconfig availability
 ( ! -x $ifconfigPath) && die "ifconfig tool not found!\n";
@@ -101,31 +111,54 @@ _HELP_
 # Check tshark availability
 ( ! -x $tsharkPath) && die "tshark tool not available!\n";
 
-# Configure wireless interface
-(system("$ifconfigPath $interface up")) && "Cannot initialize interface $interface!\n";
+if ($interface) {
+	print STDOUT "[+] Inteface mode:\n";
+	# Configure wireless interface
+	(system("$ifconfigPath $interface up")) && "Cannot initialize interface $interface!\n";
 
-# Set interface in monitor mode
-(system("$iwconfigPath $interface mode monitor")) && die "Cannot set interface $interface in monitoring mode!\n";
+	# Set interface in monitor mode
+	(system("$iwconfigPath $interface mode monitor")) && die "Cannot set interface $interface in monitoring mode!\n";
 
-# Create the child process to change wireless channels
+	$runCommand = "$tsharkPath -i $interface  -n -l 'wlan.fc.type_subtype eq 4 && wlan.ssid != \"\"' |";
+
+} elsif ($coconut) {
+	print STDOUT "[+] Wifi Coconut mode:\n";
+
+	# Check wifi-coconut availability
+	( ! -x $coconutPath) && die "wifi_coconut tool not found!\n";
+
+	$runCommand = "$coconutPath --no-display -q --pcap=- 2> /dev/null | $tsharkPath -n -l -r- 'wlan.fc.type_subtype eq 4 && wlan.ssid != \"\"' 2> /dev/null |";
+}
+
 (!defined($pid = fork)) && die "Cannot fork child process!\n";
+
+
+($verbose) && print STDOUT "[PID] $pid\n";
 
 if ($pid) {
 	# ---------------------------------
 	# Parent process: run the main loop
 	# ---------------------------------
-	($verbose) && print "!! Running with PID: $$ (child: $pid)\n";
-	open(TSHARK, "$tsharkPath -i $interface -n -l subtype probereq |") || die "Cannot spawn tshark process!\n";
+	print "[+] Starting...\n";
+
+	$runCommand = "$runCommand";
+	($verbose) && print STDOUT "[runCommand] $runCommand\n";
+
+	open(TSHARK, $runCommand) || die "Cannot spawn tshark process!\n";
 	while (<TSHARK>) {
 		chomp;
 		my $line = $_;
 		chomp($line = $_); 
+		($verbose) && print "-- $line\n";
+
 		# Everything exept backslash (some probes contains the ssid in ascii, not usable)
 		#if($line = m/\d+\.\d+ ([a-zA-Z0-9:]+).+SSID=([a-zA-ZÀ-ÿ0-9"\s\!\@\$\%\^\&\*\(\)\_\-\+\=\[\]\{\}\,\.\?\>\<]+)/) { 
+#		if($line = m/^[0-9\:\.]+ [0-9]+ [A-Z]+Hz \-[0-9]+dBm signal BSSID:(.+?) DA:(.+?) SA:([A-Za-z0-9\:]+?) .*Probe Request \((.+?)\) \[/) { # tcpdump version			
 		if($line = m/\d+\.\d+ ([a-zA-Z0-9:_]+).+SSID=([a-zA-ZÀ-ÿ0-9"\s\!\@\$\%\^\&\*\(\)\_\-\+\=\[\]\{\}\,\.\?\>\<]+)/) { 
 			if($2 ne "Broadcast") {	# Ignore broadcasts
 				my $macAddress = $1;
 				my $newKey = $2;
+				$newKey =~ s/\[Malformed Packet\]//g;
 				print DEBUG "$macAddress : $newKey\n";
 				if (! $detectedSSID{$newKey})
 				{
@@ -149,17 +182,18 @@ if ($pid) {
 			}
 		}	
 	}
-}
-else {
+}else {
 	# --------------------------------------------------
 	# Child process: Switch channels at regular interval
 	# --------------------------------------------------
-	($verbose) && print STDOUT "!! Switching wireless channel every 5\".\n";
-	while (1) {
-		for (my $channel = 1; $channel <= 12; $channel++) {
-			(system("$iwconfigPath $interface channel $channel")) &&
-				die "Cannot set interface channel.\n";
-			sleep(5);
+	if ($interface) {
+		($verbose) && print STDOUT "!! Switching wireless channel every 5\".\n";
+		while (1) {
+			for (my $channel = 1; $channel <= 12; $channel++) {
+				(system("$iwconfigPath $interface channel $channel")) &&
+					die "Cannot set interface channel.\n";
+				sleep(5);
+			}
 		}
 	}
 	
